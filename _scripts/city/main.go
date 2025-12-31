@@ -21,7 +21,7 @@ const (
 )
 
 var (
-	years = []int{2024, 2025}
+	years = []int{time.Now().Year()}
 )
 
 type NodeIterator struct {
@@ -71,12 +71,13 @@ func main() {
 }
 
 func parseHTML(url string) (*html.Node, error) {
-	const XPATH = `/html/body/div[1]/div/div/div/div[2]/div/div/div/div[2]/div/div/table/tbody`
+	const XPATH_1 = `/html/body/div[1]/div/div/div/div[2]/div/div/div/div[2]/div/div/table/tbody`
+	const XPATH_2 = `/html/body/div/div/div/div/div[2]/div/div/div/div[4]/div/div/table/tbody`
 
 	doc, err := htmlquery.LoadURL(url)
 	checkErr(err)
 
-	node, err := htmlquery.Query(doc, XPATH)
+	node, err := htmlquery.Query(doc, XPATH_1)
 	checkErr(err)
 
 	return node, nil
