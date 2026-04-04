@@ -102,7 +102,8 @@ func (h *Handler) Handel(ctx context.Context, botID int64) error {
 
 	cfg := h.cfg[botID]
 	now := h.now(cfg.Location.V())
-	date := now.Truncate(24 * time.Hour)
+	y, m, d := now.Date()
+	date := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 	prayerDay, err := h.db.GetPrayerDay(ctx, botID, date)
 	if err != nil {
 		log.Error("get prayer day", log.Err(err), log.BotID(botID))
