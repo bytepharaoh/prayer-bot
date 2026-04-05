@@ -75,8 +75,10 @@ func (r *SoonReminder) ShouldTrigger(ctx context.Context, chat *domain.Chat, pra
 	}
 
 	config := chat.Reminder.Soon
-	found := false
-	var foundID domain.PrayerID
+	var (
+		found   = false
+		foundID domain.PrayerID
+	)
 	for _, p := range prayers {
 		// logic: last_at < (prayer_time - offset) AND (prayer_time - offset) <= now
 		// keep updating to get the most recent match, so after downtime we skip
@@ -155,8 +157,10 @@ func (r *ArriveReminder) ShouldTrigger(ctx context.Context, chat *domain.Chat, p
 		{domain.PrayerIDIsha, prayerDay.Isha},
 	}
 
-	found := false
-	var foundID domain.PrayerID
+	var (
+		found   = false
+		foundID domain.PrayerID
+	)
 	for _, p := range prayers {
 		// logic: last_at < prayer_time AND prayer_time <= now
 		// keep updating to get the most recent match, so after downtime we skip
