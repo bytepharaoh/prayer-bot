@@ -75,16 +75,19 @@ func (r *SoonReminder) ShouldTrigger(ctx context.Context, chat *domain.Chat, pra
 	}
 
 	config := chat.Reminder.Soon
+	found := false
+	var foundID domain.PrayerID
 	for _, p := range prayers {
 		// logic: last_at < (prayer_time - offset) AND (prayer_time - offset) <= now
+		// keep updating to get the most recent match, so after downtime we skip
+		// stale prayers and send only the latest one
 		trigger := p.time.Add(-config.Offset.Duration())
 		if config.LastAt.Before(trigger) && (trigger.Before(now) || trigger.Equal(now)) {
-			// // Next LastAt should be incremented by 1 minute to avoid re-triggering
-			// nextLastAt := now.Add(1 * time.Minute)
-			return true, p.id
+			found = true
+			foundID = p.id
 		}
 	}
-	return false, 0
+	return found, foundID
 }
 
 func (r *SoonReminder) Send(ctx context.Context, b *bot.Bot, chat *domain.Chat, prayerID domain.PrayerID, _ *domain.PrayerDay) (int, error) {
@@ -152,13 +155,18 @@ func (r *ArriveReminder) ShouldTrigger(ctx context.Context, chat *domain.Chat, p
 		{domain.PrayerIDIsha, prayerDay.Isha},
 	}
 
+	found := false
+	var foundID domain.PrayerID
 	for _, p := range prayers {
 		// logic: last_at < prayer_time AND prayer_time <= now
+		// keep updating to get the most recent match, so after downtime we skip
+		// stale prayers and send only the latest one
 		if config.LastAt.Before(p.time) && (p.time.Before(now) || p.time.Equal(now)) {
-			return true, p.id
+			found = true
+			foundID = p.id
 		}
 	}
-	return false, 0
+	return found, foundID
 }
 
 func (r *ArriveReminder) Send(ctx context.Context, b *bot.Bot, chat *domain.Chat, prayerID domain.PrayerID, _ *domain.PrayerDay) (int, error) {
