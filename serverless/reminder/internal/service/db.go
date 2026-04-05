@@ -152,6 +152,10 @@ func (db *DB) GetSubscribers(ctx context.Context, botID int64) (chatIDs []int64,
 }
 
 func (db *DB) GetPrayerDay(ctx context.Context, botID int64, date time.Time) (prayerDay *domain.PrayerDay, _ error) {
+	// DateValueFromTime uses absolute UTC seconds, so normalize the local calendar date
+	// to UTC midnight to get the correct YDB Date value for that calendar day.
+	y, m, d := date.Date()
+	date = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	nextDate := date.Add(24 * time.Hour)
 
 	query := `
