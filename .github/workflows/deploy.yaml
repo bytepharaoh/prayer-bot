@@ -1,14 +1,24 @@
 name: Deploy to Yandex Cloud
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
-      - dev
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (github.event_name == 'workflow_dispatch' && inputs.environment || 'prod') }}
   cancel-in-progress: true
 
 env:
@@ -21,23 +31,25 @@ jobs:
   setup:
     name: Setup Environment
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    environment: ${{ github.event_name == 'pull_request' && 'dev' || (github.event_name == 'workflow_dispatch' && inputs.environment || 'prod') }}
     outputs:
       cache_key: ${{ steps.set-cache-key.outputs.cache_key }}
+      workspace: ${{ steps.set-workspace.outputs.workspace }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set workspace
+        id: set-workspace
         run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
+          WORKSPACE=${{ github.event_name == 'pull_request' && 'dev' || (github.event_name == 'workflow_dispatch' && inputs.environment || 'prod') }}
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "::notice::Workspace: $WORKSPACE"
 
       - name: Set cache key
         id: set-cache-key
         run: |
-          CACHE_KEY="${{ runner.os }}-${{ github.ref_name }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}"
+          CACHE_KEY="${{ runner.os }}-${{ steps.set-workspace.outputs.workspace }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}"
           echo "cache_key=$CACHE_KEY" >> $GITHUB_OUTPUT
           echo "::notice::Cache key: $CACHE_KEY"
 
@@ -48,7 +60,7 @@ jobs:
           service_account_key: ${{ secrets.SERVICE_ACCOUNT_KEY }}
           app_config: ${{ secrets.APP_CONFIG }}
           app_config_path: ${{ env.APP_CONFIG_PATH }}
-          workspace: ${{ env.WORKSPACE }}
+          workspace: ${{ steps.set-workspace.outputs.workspace }}
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           cache_key: ${{ steps.set-cache-key.outputs.cache_key }}
@@ -84,16 +96,11 @@ jobs:
   migrate:
     name: Database Migration
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    needs: setup
+    environment: ${{ needs.setup.outputs.workspace }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-          echo "::notice::Workspace: $WORKSPACE"
 
       - name: Install YC CLI
         run: |
@@ -132,30 +139,20 @@ jobs:
         run: |
           export PATH="$HOME/.goose:$PATH"
           cd migrations
-
-          # Add token and query options to connection string
           GOOSE_DBSTRING="${GOOSE_DBSTRING_BASE}&token=${YDB_ACCESS_TOKEN}&go_query_mode=scripting&go_fake_tx=scripting&go_query_bind=declare,numeric"
           export GOOSE_DBSTRING
-
-          echo "::notice::Running Goose migrations for $WORKSPACE environment"
+          echo "::notice::Running Goose migrations for ${{ needs.setup.outputs.workspace }} environment"
           goose up
-          echo "::notice::Migration completed successfully for $WORKSPACE environment"
         continue-on-error: false
 
   validate:
     name: Terraform Validate
     runs-on: ubuntu-latest
     needs: setup
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    environment: ${{ needs.setup.outputs.workspace }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-          echo "::notice::Workspace: $WORKSPACE"
 
       - name: Setup Terraform Environment
         uses: ./.github/actions/setup-terraform
@@ -164,7 +161,7 @@ jobs:
           service_account_key: ${{ secrets.SERVICE_ACCOUNT_KEY }}
           app_config: ${{ secrets.APP_CONFIG }}
           app_config_path: ${{ env.APP_CONFIG_PATH }}
-          workspace: ${{ env.WORKSPACE }}
+          workspace: ${{ needs.setup.outputs.workspace }}
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           cache_key: ${{ needs.setup.outputs.cache_key }}
@@ -180,18 +177,10 @@ jobs:
     name: Terraform Plan
     runs-on: ubuntu-latest
     needs: [setup, lint, validate]
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-    outputs:
-      plan-exists: ${{ steps.plan.outputs.exitcode }}
+    environment: ${{ needs.setup.outputs.workspace }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-          echo "::notice::Workspace: $WORKSPACE"
 
       - name: Setup Terraform Environment
         uses: ./.github/actions/setup-terraform
@@ -200,37 +189,52 @@ jobs:
           service_account_key: ${{ secrets.SERVICE_ACCOUNT_KEY }}
           app_config: ${{ secrets.APP_CONFIG }}
           app_config_path: ${{ env.APP_CONFIG_PATH }}
-          workspace: ${{ env.WORKSPACE }}
+          workspace: ${{ needs.setup.outputs.workspace }}
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           cache_key: ${{ needs.setup.outputs.cache_key }}
 
       - name: Terraform Plan
-        id: plan
         env:
           TF_VAR_cloud_id: ${{ secrets.CLOUD_ID }}
           TF_VAR_folder_id: ${{ secrets.FOLDER_ID }}
+        run: terraform plan -no-color 2>&1 | tee plan_output.txt
+
+      - name: Post plan as PR comment
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan_output.txt', 'utf8');
+            const truncated = planOutput.length > 65000
+              ? planOutput.slice(0, 65000) + '\n\n...(truncated — see full output in the workflow run)'
+              : planOutput;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan — \`dev\`\n\`\`\`\n${truncated}\n\`\`\``
+            });
+
+      - name: Add plan to workflow summary
         run: |
-          terraform plan -out=tfplan
-          terraform show tfplan
+          echo "## Terraform Plan — \`${{ needs.setup.outputs.workspace }}\`" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat plan_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: [setup, plan, migrate]
-    if: always() && needs.plan.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    if: needs.plan.result == 'success' && needs.migrate.result == 'success'
+    environment: ${{ needs.setup.outputs.workspace }}
     outputs:
       dispatcher_function_id: ${{ steps.outputs.outputs.dispatcher_function_id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-          echo "::notice::Workspace: $WORKSPACE"
 
       - name: Setup Terraform Environment
         uses: ./.github/actions/setup-terraform
@@ -240,7 +244,7 @@ jobs:
           service_account_key: ${{ secrets.SERVICE_ACCOUNT_KEY }}
           app_config: ${{ secrets.APP_CONFIG }}
           app_config_path: ${{ env.APP_CONFIG_PATH }}
-          workspace: ${{ env.WORKSPACE }}
+          workspace: ${{ needs.setup.outputs.workspace }}
           aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           cache_key: ${{ needs.setup.outputs.cache_key }}
@@ -252,12 +256,12 @@ jobs:
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           mkdir -p state-backups
-          terraform state pull > state-backups/terraform-$WORKSPACE-${TIMESTAMP}-${{ github.run_id }}.tfstate
+          terraform state pull > state-backups/terraform-${{ needs.setup.outputs.workspace }}-${TIMESTAMP}-${{ github.run_id }}.tfstate
 
       - name: Upload state backup
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-state-backup-${{ env.WORKSPACE }}-${{ github.run_id }}
+          name: terraform-state-backup-${{ needs.setup.outputs.workspace }}-${{ github.run_id }}
           path: state-backups/
           retention-days: 90
 
@@ -278,18 +282,12 @@ jobs:
   hook:
     name: Setup Telegram Webhooks
     runs-on: ubuntu-latest
-    needs: [apply]
+    needs: [setup, apply]
     if: needs.apply.result == 'success'
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    environment: ${{ needs.setup.outputs.workspace }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-          echo "::notice::Workspace: $WORKSPACE"
 
       - name: Load application config
         uses: ./.github/actions/load-config
@@ -305,50 +303,34 @@ jobs:
 
       - name: Execute webhook setup script
         run: |
-          echo "::notice::Config file: ${{ env.APP_CONFIG_PATH }}"
-          echo "::notice::Dispatcher function ID: $DISPATCHER_FUNCTION_ID"
-
           chmod +x _scripts/hook.sh
           bash _scripts/hook.sh
         continue-on-error: false
 
-      - name: Verify webhook setup
-        run: |
-          echo "::notice::Webhook setup completed successfully for $WORKSPACE environment"
-
   summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [setup, validate, lint, migrate, plan, apply, hook]
+    needs: [setup, lint, migrate, validate, plan, apply, hook]
     if: always()
     steps:
-      - name: Set workspace
-        run: |
-          WORKSPACE=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-          echo "WORKSPACE=$WORKSPACE" >> $GITHUB_ENV
-
       - name: Generate summary
         run: |
-          echo "## Deployment Summary - $WORKSPACE environment" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary — \`${{ needs.setup.outputs.workspace }}\` environment" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Code Linting | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Database Migration | ${{ needs.migrate.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Validate | ${{ needs.validate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Terraform Plan | ${{ needs.plan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Terraform Apply | ${{ needs.apply.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Webhook Setup | ${{ needs.hook.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Workspace:** $WORKSPACE" >> $GITHUB_STEP_SUMMARY
+          echo "**Workspace:** ${{ needs.setup.outputs.workspace }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Cache Key:** ${{ needs.setup.outputs.cache_key }}" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.apply.outputs.dispatcher_function_id }}" != "" ]; then
             echo "**Dispatcher Function ID:** ${{ needs.apply.outputs.dispatcher_function_id }}" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "**Manual Trigger:** Yes" >> $GITHUB_STEP_SUMMARY
           fi
