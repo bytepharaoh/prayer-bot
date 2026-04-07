@@ -52,6 +52,12 @@ type JamaatDelayConfig struct {
 type JamaatConfig struct {
 	Enabled bool               `json:"enabled"`
 	Delay   *JamaatDelayConfig `json:"delay"`
+	State   *JamaatState       `json:"state"`
+}
+
+type JamaatState struct {
+	MessageID int    `json:"message_id"`
+	LastAt    string `json:"last_at"`
 }
 
 type ReminderConfig struct {
@@ -250,11 +256,14 @@ func transformChat(oldChat OldChat, moscowLocation *time.Location) (NewChat, err
 		Jamaat: &JamaatConfig{
 			Enabled: subscribed && jamaat,
 			Delay: &JamaatDelayConfig{
-				Fajr:    Duration(10 * time.Minute),
+				Fajr:    Duration(20 * time.Minute),
 				Dhuhr:   Duration(10 * time.Minute),
 				Asr:     Duration(10 * time.Minute),
 				Maghrib: Duration(10 * time.Minute),
-				Isha:    Duration(20 * time.Minute),
+				Isha:    Duration(10 * time.Minute),
+			},
+			State: &JamaatState{
+				LastAt: now.Format(time.RFC3339),
 			},
 		},
 	}

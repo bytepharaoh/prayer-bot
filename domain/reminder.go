@@ -8,6 +8,7 @@ const (
 	ReminderTypeTomorrow ReminderType = "tomorrow"
 	ReminderTypeSoon     ReminderType = "soon"
 	ReminderTypeArrive   ReminderType = "arrive"
+	ReminderTypeJamaat   ReminderType = "jamaat"
 )
 
 func (rt ReminderType) String() string {
@@ -26,6 +27,12 @@ type (
 	JamaatConfig struct {
 		Enabled bool               `json:"enabled"`
 		Delay   *JamaatDelayConfig `json:"delay"`
+		State   *JamaatState       `json:"state"`
+	}
+
+	JamaatState struct {
+		MessageID int       `json:"message_id"`
+		LastAt    time.Time `json:"last_at"`
 	}
 
 	ReminderConfig struct {
