@@ -123,15 +123,15 @@ func TestJamaatReminder_ShouldTrigger(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chat := &domain.Chat{
-				Reminder: &domain.Reminder{
-					Jamaat: &domain.JamaatConfig{
-						Enabled: tt.enabled,
-						Delay:   &domain.JamaatDelayConfig{},
-						State: &domain.JamaatState{
-							LastAt: tt.lastAt,
-						},
+			Reminder: &domain.Reminder{
+				Jamaat: &domain.JamaatConfig{
+					Enabled: tt.enabled,
+					Delay:   &domain.JamaatDelayConfig{},
+					State: &domain.ReminderConfig{
+						LastAt: tt.lastAt,
 					},
 				},
+			},
 			}
 			for prayerID, delay := range tt.delays {
 				chat.Reminder.Jamaat.Delay.SetDelayByPrayerID(prayerID, delay)

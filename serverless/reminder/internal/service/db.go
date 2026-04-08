@@ -295,7 +295,7 @@ func (db *DB) UpdateReminder(
 				reminder.Jamaat = &domain.JamaatConfig{}
 			}
 			if reminder.Jamaat.State == nil {
-				reminder.Jamaat.State = &domain.JamaatState{}
+				reminder.Jamaat.State = &domain.ReminderConfig{}
 			}
 			reminder.Jamaat.State.MessageID = messageID
 			reminder.Jamaat.State.LastAt = lastAt

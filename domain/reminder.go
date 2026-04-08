@@ -27,12 +27,7 @@ type (
 	JamaatConfig struct {
 		Enabled bool               `json:"enabled"`
 		Delay   *JamaatDelayConfig `json:"delay"`
-		State   *JamaatState       `json:"state"`
-	}
-
-	JamaatState struct {
-		MessageID int       `json:"message_id"`
-		LastAt    time.Time `json:"last_at"`
+		State   *ReminderConfig    `json:"state"`
 	}
 
 	ReminderConfig struct {

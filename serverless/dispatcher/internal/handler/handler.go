@@ -255,7 +255,7 @@ func (h *Handler) getChat(ctx context.Context, update *models.Update) (*domain.C
 				Maghrib: domain.Duration(10 * time.Minute),
 				Isha:    domain.Duration(10 * time.Minute),
 			},
-			State: &domain.JamaatState{
+			State: &domain.ReminderConfig{
 				LastAt: now,
 			},
 		},

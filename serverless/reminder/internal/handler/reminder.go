@@ -213,7 +213,7 @@ func (r *JamaatReminder) ShouldTrigger(ctx context.Context, chat *domain.Chat, p
 	}
 
 	if jamaat.State == nil {
-		jamaat.State = &domain.JamaatState{}
+		jamaat.State = &domain.ReminderConfig{}
 	}
 
 	prayers := []struct {
@@ -248,7 +248,7 @@ func (r *JamaatReminder) Send(ctx context.Context, b *bot.Bot, chat *domain.Chat
 	}
 
 	if chat.Reminder.Jamaat.State == nil {
-		chat.Reminder.Jamaat.State = &domain.JamaatState{}
+		chat.Reminder.Jamaat.State = &domain.ReminderConfig{}
 	}
 
 	deleteMessages(ctx, b, chat, chat.Reminder.Jamaat.State.MessageID)
